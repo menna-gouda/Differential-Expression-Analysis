@@ -1,0 +1,306 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+file <- "C:\\Users\\Menna\\~~~~~\\GSE124110_readCounts_oviduct.txt"
+data <- read.table(file,header = TRUE, row.names = 1, sep = "")
+data
+```
+
+```{r}
+data_positive <- data                     # Duplicate data frame
+data_positive[data_positive < 0] <- 0     # Set negative values to 0
+data_positive 
+```
+
+```{r}
+sample_name <- colnames(data)
+sample_lbl <- c(rep("N",20), rep("H",20),rep("L",16))
+sample_loc <- c(rep("AmpIpsi",10),rep("IsthCont",2),rep("AmpCont",4),rep("IsthCont",4),"IsthIpsi",
+                rep("AmpIpsi",4),rep("IsthIpsi",4),"AmpIpsi",rep("AmpCont",5),rep("IsthCont",5),
+                rep("AmpIpsi",4),rep("IsthIpsi",4),rep("AmpCont",6),rep("IsthCont",2))
+metadata <- data.frame(sample_name,sample_lbl,sample_loc)
+metadata
+```
+
+```{r}
+library( "DESeq2" )
+dds <- DESeqDataSetFromMatrix(countData=as.matrix(data_positive), 
+                              colData=metadata, 
+                              design=~ sample_lbl + sample_loc)
+dds
+```
+
+```{r}
+dds <- DESeq(dds)
+```
+
+```{r}
+res1 <- results(dds, contrast=c("sample_lbl","L","N"))
+pvals1 <- res1$pvalue
+# Visualize sig. results
+par(mfrow=c(1,1))
+hist(pvals1, xlab='Raw p-value', cex.lab=1.5, cex.main=2)
+```
+
+```{r}
+hist(res1$pvalue,xlab='Raw P-value', cex.lab=1.5, cex.main=2,
+main='DESeq2, Wald test')
+```
+
+```{r}
+t <- is.na(res1$pvalue)
+sum(t) #5665
+boxplot(res1$baseMean[t], cex=2, pch=16)
+```
+
+```{r}
+padj <- p.adjust(res1$pvalue, "fdr")
+t <- padj < .05 & !is.na(padj)
+gn.sig <- rownames(res1)[t]
+length(gn.sig) # 134
+```
+
+```{r}
+par(mfrow=c(1,1))
+plotDispEsts(dds, cex.lab=1.5)
+```
+
+```{r}
+##Go through each row and determine if a value is zero
+row_sub = apply(data_positive, 1, function(row) all(row !=0 ))
+##Subset as usual
+filtered_data <- data_positive[row_sub,]
+```
+
+```{r}
+library( "DESeq2" )
+dds2 <- DESeqDataSetFromMatrix(countData=as.matrix(filtered_data), 
+                              colData=metadata, 
+                              design=~ sample_lbl + sample_loc)
+dds2
+```
+
+```{r}
+dds2 <- DESeq(dds2)
+```
+
+```{r}
+res2 <- results(dds2, contrast=c("sample_lbl","L","N"))
+pvals2 <- res2$pvalue
+# Visualize sig. results
+par(mfrow=c(1,1))
+hist(pvals2, xlab='Raw p-value', cex.lab=1.5, cex.main=2)
+```
+
+```{r}
+hist(res2$pvalue,xlab='Raw P-value', cex.lab=1.5, cex.main=2,
+main='DESeq2, Wald test')
+```
+
+```{r}
+t <- is.na(res2$pvalue)
+print(sum(t)) # 0%
+#boxplot(res2$baseMean[t], cex=2, pch=16)
+```
+
+```{r}
+padj <- p.adjust(res2$pvalue, "fdr")
+t <- padj < .05 & !is.na(padj)
+gn.sig <- rownames(res2)[t]
+length(gn.sig) # 151
+```
+```{r}
+filtered_data[gn.sig,]
+colnames_ <-
+```
+
+
+```{r}
+par(mfrow=c(1,1))
+plotDispEsts(dds2, cex.lab=1.5)
+```
+```{r}
+library(RColorBrewer)
+hmcol <- colorRampPalette(brewer.pal(9,"PRGn"))(256)
+colnames(data) <- sample_lbl 
+csc <- rep(hmcol[50],ncol(data))
+csc[group=='CM'] <- hmcol[200]
+heatmap(as.matrix(data),scale="row", col=hmcol,ColSideColors=csc,
+cexCol=2.5,cexRow=1.5, main='Raw Counts = expr')
+```
+
+```{r}
+library(RColorBrewer)
+hmcol <- colorRampPalette(brewer.pal(9,"RdBu"))(256)
+colnames(filtered_data) <- full_lbls 
+csc <- c(rep(hmcol[100],20),rep(hmcol[1],20),rep(hmcol[255],16))
+heatmap(log(1+as.matrix(filtered_data[gn.sig,])),scale="row", col=hmcol,ColSideColors=csc,Colv = NA,
+cexCol=1,cexRow=1, main='Raw Counts = expr')
+```
+
+```{r}
+counts <- rowMeans(data)
+t <- res1$pvalue > 0.8 & !is.na(res1$pvalue)
+par(mfrow=c(2,2))
+hist(log(counts[t]), xlab='[logged] mean count', 
+main='Genes with largest p-values')
+hist(log(counts[!t]), xlab='[logged] mean count', 
+main='Genes with NOT largest p-values')
+# -- tends to be genes with smaller overall counts
+
+```
+
+
+```{r}
+file <- "C:\\Users\\Menna\\~~~~~~~~\\Obatoclax.csv"
+new_data <- read.csv(file,header = TRUE, row.names = 1, sep = ",")
+new_data
+```
+
+```{r}
+library(affy); library(affydata); 
+library(genefilter);
+require(Biobase)
+object<-new("ExpressionSet", exprs=as.matrix(new_data))
+e.mat <- 2^exprs(object)
+ffun <- filterfun(pOverA(0.20,50), cv(0.15))
+t.fil <- genefilter(e.mat,ffun)
+new_data1 <- log2(e.mat[t.fil,])
+dim(new_data1)
+```
+
+```{r}
+library(limma)
+cell_type <- as.factor(c('R','R','S','S','R','R','S','S','R','R','S','S'))
+obatoclax_dosage <- as.factor(c(rep("C",4),rep("H",4),rep("L",4)))
+design <- model.matrix(~0+cell_type:obatoclax_dosage)
+colnames(design) <- c('RC','SC','RH','SH','RL','SL')
+head(design)
+```
+```{r}
+design1 <- cbind(Intercept=1,obatoclax_dosage=c(rep(0,4),rep(1,4),rep(2,4)),
+                cell_type=c(0,0,1,1,0,0,1,1,0,0,1,1))
+design1
+```
+```{r}
+p.trt <- topTable(eBayes(lmFit(new_data2,design1)),n=13,373,coef=2)$P.Value
+hist(p.trt, main='DEs (cell_type, accounted)',
+xlab='raw p-value (obatoclax_dosage )',ylab=NA)
+```
+```{r}
+padj <- p.adjust(fit$pvalue, "fdr")
+t <- padj < 0.05 & !is.na(padj)
+gn.sig <- rownames(fit)[t]
+length(gn.sig) # 134
+```
+
+
+```{r}
+object1 <-new("ExpressionSet", exprs=as.matrix(new_data1))
+new_data2 <- exprs(object1)
+fit <- lmFit(new_data2, design)
+```
+
+```{r}
+fit
+```
+
+```{r}
+contrast.obatoclax_dosage <- makeContrasts(RC+SC-RH-SH, RC+SC-RL-RH,
+levels=design)
+fit.obatoclax_dosage <- contrasts.fit(fit, contrast.obatoclax_dosage)
+final.fit.obatoclax_dosage <- eBayes(fit.obatoclax_dosage)
+top.obatoclax_dosage <- topTableF(final.fit.obatoclax_dosage, n=nrow(eset))
+head(top.obatoclax_dosage)
+```
+
+
+```{r}
+install.packages("randomForest")
+library(randomForest)
+set.seed(1234)
+```
+
+```{r}
+library(randomForest)
+sample_lbl <- c(rep("N",20), rep("H",20),rep("L",16))
+rf <- randomForest(x=t(filtered_data),y=as.factor(sample_lbl),
+ntree=10000, importance=TRUE)
+```
+
+```{r}
+varImpPlot(rf, n.var=20, type=1,
+main='Bovine Subset Results')
+```
+
+```{r}
+imp.temp <- importance(rf,type=1)
+t <- order(imp.temp,decreasing=TRUE)
+sort.imp <- imp.temp[t,]
+gn.20 <- names(sort.imp[1:20])
+gn.20
+```
+
+```{r}
+emat <- as.matrix(data)
+gn <- rownames(data)
+t <- is.element(gn,gn.20)
+small.eset <- emat[t,]
+small.eset
+```
+
+
+```{r}
+library(RColorBrewer)
+hmcol <- colorRampPalette(brewer.pal(9,"RdBu"))(256)
+colnames(small.eset) <- sample_lbl 
+csc <- c(rep(hmcol[100],20),rep(hmcol[1],20),rep(hmcol[255],16))
+csc[group=='CM'] <- hmcol[200]
+heatmap(log(1+small.eset),scale="row", col=hmcol,ColSideColors=csc, Colv = NA,
+cexCol=1,cexRow=1, main='Raw Counts = (1+expr)')
+```
+```{r}
+hist(pvals2, xlab='Raw p-value', cex.lab=1.5, cex.main=2)
+```
+
+
+```{r}
+heatmap(log(1+small.eset),scale="row", col=hmcol,
+ColSideColors=csc,
+cexCol=2.5,cexRow=1.5, main='Log(1+expr)')
+```
+
+```{r}
+install.packages("varSelRF")
+```
+
+
+```{r}
+library(varSelRF)
+set.seed(134)
+rf.big <- varSelRF(t(emat),as.factor(sample_lbl),
+ntree=5000, ntreeIterat=2000, vars.drop.frac=0.2) 
+rf.gn <- rf.big$selected.vars
+```
+
+```{r}
+rf.gn
+```
+
+```{r}
+sample_lbl
+sample_loc
+```
+```{r}
+full_lbls <- c(rep("NAI",10),rep("NIC",2),rep("NAC",4),rep("NIC",4),"HII",rep("HAI",4)
+               ,rep("HII",4),"HAI",rep("HAC",5),rep("HIC",5),rep("LAI",4),rep("LII",4),
+               rep("LAC",6),rep("LIC",2))
+```
+
+
+
+
+
